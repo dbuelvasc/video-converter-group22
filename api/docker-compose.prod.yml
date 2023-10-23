@@ -1,0 +1,19 @@
+
+version: '3.8'
+
+services:
+  web:
+    image: ghcr.io/felix-orduz/misw4204-test-feog:latest
+    ports:
+      - "5000:5000"
+    environment:
+      FLASK_ENV: development
+      DATABASE_URL: ${DATABASE_URL}
+      SAVE_PATH: /file_conversor/uploaded/
+    volumes:
+      - "$HOME/file_conversor/uploaded/:/file_conversor/uploaded/"
+
+
+
+
+

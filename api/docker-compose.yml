@@ -1,0 +1,30 @@
+version: '3.8'
+
+services:
+  web:
+    build: .
+    ports:
+      - "5001:5000"
+    environment:
+      FLASK_ENV: development
+      DATABASE_URL: postgresql://postgres:postgrespwd@db:5432/conversor
+      SAVE_PATH: ${FILE_SAVE_PATH}
+    depends_on:
+      - db
+    volumes:
+      - "$HOME/file_conversor/uploaded/:/file_conversor/uploaded/"
+
+  db:
+    image: postgres:alpine3.18
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgrespwd
+      POSTGRES_DB: conversor
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+volumes:
+  postgres_data:
+
