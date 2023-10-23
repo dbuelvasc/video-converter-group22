@@ -21,7 +21,7 @@ Este proyecto utiliza `docker-compose` para orquestar múltiples servicios, incl
 3. **Verifica el estado de los servicios**:
 
    ```bash
-     docker-compose up -d
+     docker-compose ps
    ```
 
 
