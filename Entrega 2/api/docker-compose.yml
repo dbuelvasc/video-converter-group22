@@ -1,0 +1,21 @@
+version: '3.8'
+
+services:
+  web:
+    image: ghcr.io/felix-orduz/misw4204-web:latest
+    ports:
+      - "5000:5000"
+    environment:
+      FLASK_ENV: development
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@${POSTGRES_HOST}:5432/conversor
+      SAVE_PATH: /file_conversor/uploaded/
+      SERVER_URI: http://ec2-54-234-234-88.compute-1.amazonaws.com:5000/
+      CONVERT_PATH: /file_conversor/processed/
+    volumes:
+      - "/opt/convertidor/uploaded/:/file_conversor/uploaded/"
+      - "/opt/convertidor/processed/:/file_conversor/processed/"
+
+
+volumes:
+  postgres_data:
+
