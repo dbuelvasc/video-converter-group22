@@ -27,3 +27,6 @@ Thumbs.db
 # Archivos y directorios generados por sistemas de construcción
 node_modules/
 dist/
+
+# Archivos y directorios generados por IDEs
+.idea
