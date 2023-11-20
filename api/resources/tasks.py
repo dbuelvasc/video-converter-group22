@@ -5,6 +5,7 @@ from flask_jwt_extended import jwt_required, get_jwt_identity
 from models.models import Task, User, db
 from flask_jwt_extended import jwt_required
 from datetime import datetime
+from resources.gcpfiles import GCPFiles
 import os
 
 class Tasks(Resource):
@@ -47,7 +48,12 @@ class Tasks(Resource):
         save_path = os.path.join(os.environ.get('SAVE_PATH', '/file_conversor/uploaded/'), unique_filename)
 
         # Guarda el archivo en la ruta especificada
-        uploaded_file.save(save_path)
+        #uploaded_file.save(save_path)
+
+        # Crear instancia de GCPFiles y subir el archivo
+        file = request.files['file']
+        gcp_files = GCPFiles()
+        gcp_files.upload_file(file, unique_filename)
 
         # Parsea los parámetros de la solicitud
         parser = reqparse.RequestParser()
@@ -72,7 +78,7 @@ class Tasks(Resource):
         db.session.commit()
 
         server_uri = os.environ.get('SERVER_URI', 'http://localhost:5001/')
-        original_file_url = f"{server_uri}files/original/{new_task.storedFileName}"
+        original_file_url = f"{server_uri}files/uploaded/{new_task.storedFileName}"
         processed_file_url = f"{server_uri}files/processed/{unique_uuid}.{new_task.newFormat}"
 
         task_info = {
@@ -103,7 +109,7 @@ class Tasks(Resource):
                 return {"message": "Tarea no encontrada"}, 404
 
             # Genera las URLs para recuperar/descargar los archivos
-            original_file_url = f"{server_uri}files/original/{task.storedFileName}"
+            original_file_url = f"{server_uri}files/uploaded/{task.storedFileName}"
             filename,_ = os.path.splitext(task.storedFileName)
             processed_file_url = f"{server_uri}files/processed/{filename}.{task.newFormat}"
 
@@ -124,7 +130,7 @@ class Tasks(Resource):
 
             tasks_list = []
             for task in tasks:
-                original_file_url = f"{server_uri}files/original/{task.storedFileName}"
+                original_file_url = f"{server_uri}files/uploaded/{task.storedFileName}"
                 filename, _ = os.path.splitext(task.storedFileName)
                 processed_file_url = f"{server_uri}files/processed/{filename}.{task.newFormat}"
 
