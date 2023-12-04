@@ -1,54 +1,83 @@
-from google.cloud import pubsub_v1
-from celery import Celery
-from sqlalchemy import create_engine, MetaData, Table, update
 import os
+from flask import Flask
+from flask_cors import CORS
+from flask_jwt_extended import JWTManager
+from flask_restful import Api, Resource
+from flask_sqlalchemy import SQLAlchemy
+from flask import Flask, request
+from sqlalchemy import create_engine, MetaData, Table, update
+from models.models import db, User, Task
 import ffmpeg
-from google.cloud import storage
-import json
+import logging
 import ast
+from google.cloud import storage
+import base64
 
-# Configuración de Celery
-BROKER_URL = os.environ.get('CELERY_BROKER_URL', 'redis://localhost:6379/0')
-celery_app = Celery('worker', broker=BROKER_URL)
-
-# Configuración de SQLAlchemy
-DATABASE_URI = os.environ.get('DATABASE_URL')
-engine = create_engine(DATABASE_URI)
-metadata = MetaData()
-metadata.bind = engine
-task_table = Table('tasks', metadata, autoload_with=engine)
+class Ping(Resource):
+    def get(self):
+        try:
+            # Establecer una conexión y ejecutar una consulta SQL
+            tasks = Task.query.all()
+            return {'tasks': [dict(id=task.id) for task in tasks]}, 200
+        except Exception as e:
+            return {'message': str(e)}, 500
 
 
-# Configuración de Pub/Sub
-subscriber = pubsub_v1.SubscriberClient()
-subscription_path = subscriber.subscription_path("estudio-gcp-301920", "video_converter-sub")
+logging.basicConfig(level=logging.INFO)
+logging.info("Este es un mensaje de info en el log")
 
-def callback(message):
-    print(f"Recibido mensaje: {message}")
-    print(f"mensaje Data: {message.data}")
+app = Flask(__name__)
+app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL')
+# engine = create_engine(app.config['SQLALCHEMY_DATABASE_URI'])
+app.config['DEBUG'] = True
+
+
+CORS(app)
+api = Api(app)
+db.init_app(app)
+
+
+@app.route("/pubsub/push", methods=["POST"])
+def pubsub_push():
+    envelope = request.get_json()
+    message = envelope['message']
+
+    if not message:
+        return 'Mensaje vacío', 400
+
     try:
-        # Decodificar de bytes a string
-        message_str = message.data.decode("utf-8")
-        task_data = ast.literal_eval(message_str)
-        # # Si ya es un diccionario, úsalo directamente
-        # if isinstance(message_str, dict):
+        # Decodificar de bytes a string (asumiendo que el mensaje viene en base64)
+        message_str = message['data']
+        logging.info(f"Mensaje: {message_str}")
+        # task_data = ast.literal_eval(message_str)
+        decoded_message = base64.b64decode(message_str).decode("utf-8")
+        task_data = ast.literal_eval(decoded_message)
+        logging.info(f"task_data: {task_data}")
+        process_task_from_queue(task_data)
+        return 'OK', 200
 
-        # # Intenta decodificar como JSON si los datos son un string
-        # elif isinstance(message_str, str):
-        #     task_data = json.loads(message_str)
-        # else:
-        #     raise ValueError("Formato de mensaje no reconocido")
-
-        process_task_from_queue.delay(task_data)
-        message.ack()
-
-    except (json.JSONDecodeError, ValueError) as e:
-        print(f"Error al procesar el mensaje: {e}")
+    except Exception as e:
+        logging.error(f"Error al procesar el mensaje: {e}")
+        return 'Error al procesar el mensaje', 500
 
 
-# Escucha de mensajes
-subscriber.subscribe(subscription_path, callback=callback)
+def process_task_from_queue(task_data):
 
+    logging.info(f"Inicia Conversion: {task_data}")
+    # Convertir el archivo
+    converted_file_name = convert_file_format(task_data["storedFileName"], task_data["newFormat"])
+    logging.info(f"finaliza Conversion: {converted_file_name}")
+    # Actualizar la base de datos con el status 'processed'
+    try:
+        # Encuentra la tarea por su ID y actualiza su estado
+        task = Task.query.filter_by(id=task_data["id"]).first()
+        logging.info(f"task: {task}")
+        if task:
+            task.status = 'processed'
+            db.session.commit()
+    except Exception as e:
+        logging.error(f"Error al actualizar la tarea: {e}")
+        db.session.rollback()
 
 def convert_file_format(storedFileName, newFormat):
 
@@ -67,8 +96,6 @@ def convert_file_format(storedFileName, newFormat):
     file_name, _ = os.path.splitext(storedFileName)
     output_file_name = f"{file_name}.{newFormat}"
     output_file = f"/tmp/{output_file_name}"
-    # input_file = os.path.join(os.environ.get('SAVE_PATH', '/file_conversor/uploaded/'), storedFileName)
-    # output_file = os.path.join(os.environ.get('CONVERT_PATH', '/file_conversor/processed/'), file_name +'.'+newFormat )
 
     stream = ffmpeg.input(input_file)
     stream = ffmpeg.output(stream, output_file)
@@ -84,21 +111,8 @@ def convert_file_format(storedFileName, newFormat):
 
     return output_file
 
-@celery_app.task(name='process_task_from_queue')
-def process_task_from_queue(task_data):
-    # Convertir el archivo
-    converted_file_name = convert_file_format(task_data["storedFileName"], task_data["newFormat"])
+api.add_resource(Ping, '/ping')
 
-    # Actualizar la base de datos con el status 'processed'
-    conn = engine.connect()
-    stmt = (
-        update(task_table).
-        where(task_table.c.id == task_data["id"]).
-        values(status='processed')
-    )
-    conn.execute(stmt)
-    conn.commit()
-    conn.close()
-
-if __name__ == "__main__":
-    celery_app.start()
+if __name__ == '__main__':
+    print(f"Debug xx mode: {'on' if app.debug else 'off'}")
+    app.run(debug=True)
